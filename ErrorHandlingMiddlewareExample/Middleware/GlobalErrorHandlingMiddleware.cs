@@ -1,5 +1,4 @@
-﻿using System.Net.Mime;
-using System.Text.Json;
+﻿using System.Text.Json;
 using ErrorHandlingMiddlewareExample.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
@@ -51,7 +50,7 @@ public class GlobalErrorHandlingMiddleware
 
     private static async Task WriteErrorToResponseAsync(HttpContext httpContext, ProblemDetails problemDetails)
     {
-        httpContext.Response.ContentType = MediaTypeNames.Application.Json;
+        httpContext.Response.ContentType = "application/problem+json";
         httpContext.Response.StatusCode = problemDetails.Status!.Value;
         var json = JsonSerializer.Serialize(problemDetails);
         await httpContext.Response.WriteAsync(json);
