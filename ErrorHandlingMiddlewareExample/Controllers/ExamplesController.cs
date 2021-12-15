@@ -20,7 +20,7 @@ namespace ErrorHandlingMiddlewareExample.Controllers
         [ProducesResponseType(400)]
         public IActionResult GetBadRequest()
         {
-            throw new BadRequestException("Field 1 had an error.");
+            throw new BadRequestException("Field 1 is required.", "Field 2 is invalid.");
         }
 
         [HttpGet("not-found")]

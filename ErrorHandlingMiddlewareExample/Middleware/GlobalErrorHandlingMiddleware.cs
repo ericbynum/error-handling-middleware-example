@@ -14,7 +14,10 @@ public class GlobalErrorHandlingMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext httpContext, ILoggerFactory loggerFactory)
+    public async Task InvokeAsync(
+        HttpContext httpContext, 
+        ILoggerFactory loggerFactory,
+        ProblemDetailsFactory problemDetailsFactory)
     {
         try
         {
@@ -22,40 +25,35 @@ public class GlobalErrorHandlingMiddleware
         }
         catch (BadRequestException exception)
         {
-            LogWarning(loggerFactory, exception);
+            ILogger logger = BuildLogger(loggerFactory, exception);
+            logger.LogWarning("Bad request had {ErrorCount} error(s): {Errors}", exception.Errors.Length, exception.Errors);
 
-            ProblemDetails problemDetails = BuildProblemDetails(httpContext, 400);
+            ProblemDetails problemDetails = problemDetailsFactory.CreateProblemDetails(httpContext, 400);
+            problemDetails.Detail = exception.Message;
             problemDetails.Extensions.Add("errors", exception.Errors);
-            await WriteErrorToResponseAsync(httpContext, problemDetails);
+
+            await BuildResponseAsync(httpContext, problemDetails);
         }
         catch (ResourceNotFoundException exception)
         {
-            LogWarning(loggerFactory, exception);
+            ILogger logger = BuildLogger(loggerFactory, exception);
+            logger.LogWarning("Resource not found: {ResourceType} {ResourceId}", exception.ResourceName, exception.ResourceId);
 
-            ProblemDetails problemDetails = BuildProblemDetails(httpContext, 404);
-            problemDetails.Detail = $"{exception.ResourceName}: {exception.ResourceId} not found.";
-            await WriteErrorToResponseAsync(httpContext, problemDetails);
+            ProblemDetails problemDetails = problemDetailsFactory.CreateProblemDetails(httpContext, 404);
+            problemDetails.Detail = exception.Message;
+
+            await BuildResponseAsync(httpContext, problemDetails);
         }
         catch (Exception exception)
         {
-            LogError(loggerFactory, exception);
+            ILogger logger = BuildLogger(loggerFactory, exception);
+            logger.LogError(exception, exception.Message);
 
-            ProblemDetails problemDetails = BuildProblemDetails(httpContext, 500);
+            ProblemDetails problemDetails = problemDetailsFactory.CreateProblemDetails(httpContext, 500);
             problemDetails.Detail = exception.Message;
-            await WriteErrorToResponseAsync(httpContext, problemDetails);
+
+            await BuildResponseAsync(httpContext, problemDetails);
         }
-    }
-
-    private void LogWarning(ILoggerFactory loggerFactory, Exception exception)
-    {
-        ILogger logger = BuildLogger(loggerFactory, exception);
-        logger.LogWarning(exception, exception.Message);
-    }
-
-    private void LogError(ILoggerFactory loggerFactory, Exception exception)
-    {
-        ILogger logger = BuildLogger(loggerFactory, exception);
-        logger.LogError(exception, exception.Message);
     }
 
     private ILogger BuildLogger(ILoggerFactory loggerFactory, Exception exception)
@@ -64,14 +62,8 @@ public class GlobalErrorHandlingMiddleware
         ILogger logger = loggerFactory.CreateLogger(typeThatThrewException);
         return logger;
     }
-
-    private static ProblemDetails BuildProblemDetails(HttpContext httpContext, int statusCode)
-    {
-        var problemDetailsFactory = httpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
-        return problemDetailsFactory.CreateProblemDetails(httpContext, statusCode);
-    }
-
-    private static async Task WriteErrorToResponseAsync(HttpContext httpContext, ProblemDetails problemDetails)
+    
+    private static async Task BuildResponseAsync(HttpContext httpContext, ProblemDetails problemDetails)
     {
         httpContext.Response.ContentType = "application/problem+json";
         httpContext.Response.StatusCode = problemDetails.Status!.Value;
