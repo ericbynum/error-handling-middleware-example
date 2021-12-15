@@ -14,7 +14,7 @@ public class GlobalErrorHandlingMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext httpContext, ILogger<GlobalErrorHandlingMiddleware> logger)
+    public async Task InvokeAsync(HttpContext httpContext, ILoggerFactory loggerFactory)
     {
         try
         {
@@ -22,24 +22,47 @@ public class GlobalErrorHandlingMiddleware
         }
         catch (BadRequestException exception)
         {
+            LogWarning(loggerFactory, exception);
+
             ProblemDetails problemDetails = BuildProblemDetails(httpContext, 400);
             problemDetails.Extensions.Add("errors", exception.Errors);
             await WriteErrorToResponseAsync(httpContext, problemDetails);
         }
         catch (ResourceNotFoundException exception)
         {
+            LogWarning(loggerFactory, exception);
+
             ProblemDetails problemDetails = BuildProblemDetails(httpContext, 404);
             problemDetails.Detail = $"{exception.ResourceName}: {exception.ResourceId} not found.";
             await WriteErrorToResponseAsync(httpContext, problemDetails);
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, exception.Message);
+            LogError(loggerFactory, exception);
 
             ProblemDetails problemDetails = BuildProblemDetails(httpContext, 500);
             problemDetails.Detail = exception.Message;
             await WriteErrorToResponseAsync(httpContext, problemDetails);
         }
+    }
+
+    private void LogWarning(ILoggerFactory loggerFactory, Exception exception)
+    {
+        ILogger logger = BuildLogger(loggerFactory, exception);
+        logger.LogWarning(exception, exception.Message);
+    }
+
+    private void LogError(ILoggerFactory loggerFactory, Exception exception)
+    {
+        ILogger logger = BuildLogger(loggerFactory, exception);
+        logger.LogError(exception, exception.Message);
+    }
+
+    private ILogger BuildLogger(ILoggerFactory loggerFactory, Exception exception)
+    {
+        Type typeThatThrewException = exception.TargetSite?.DeclaringType ?? GetType();
+        ILogger logger = loggerFactory.CreateLogger(typeThatThrewException);
+        return logger;
     }
 
     private static ProblemDetails BuildProblemDetails(HttpContext httpContext, int statusCode)
